@@ -14,6 +14,11 @@ fn lire_ligne(question: &str) -> io::Result<Option<String>> {
     Ok(Some(ligne.trim().to_string()))
 }
 
+/// Représentation hexadécimale d'une suite d'octets.
+fn hex(octets: &[u8]) -> String {
+    octets.iter().map(|octet| format!("{octet:02x}")).collect()
+}
+
 fn generer() {
     let entropy = match bip39::generate_entropy() {
         Ok(entropy) => entropy,
@@ -23,6 +28,18 @@ fn generer() {
         }
     };
     println!("Entropie (entier 128 bits) : {}", u128::from_be_bytes(entropy));
+    afficher_representations(&entropy);
+}
+
+fn afficher_representations(entropy: &[u8; bip39::ENTROPY_BYTES]) {
+    println!("Octets : {entropy:?}");
+    println!("Hexadécimal : {}", hex(entropy));
+    println!("Checksum (4 bits) : {:04b}", bip39::checksum(entropy));
+    println!("Binaire + checksum : {}", bip39::bits_with_checksum(entropy));
+    println!("Groupes de 11 bits → indice :");
+    for index in bip39::word_indices(entropy) {
+        println!("  {index:011b} → {index}");
+    }
 }
 
 pub fn run() -> io::Result<()> {
