@@ -5,3 +5,5 @@ edition = "2024"
 publish = false
 
 [dependencies]
+getrandom = "0.4.3"
+sha2 = "0.11.0"
