@@ -7,8 +7,8 @@ Une branche fusionnée par merge commit par partie du TD, un commit par question
 - [x] **Q3. Représentations.** Octets, hexadécimal, binaire, checksum SHA-256 et groupes de 11 bits.
 - [x] **Q4. Phrase BIP39.** Liste officielle anglaise, conversion des indices en mots.
 - [x] **Q5. Import d'une phrase.** Vérifier les mots, la longueur et le checksum, puis calculer la seed (PBKDF2-HMAC-SHA512, 2048 itérations, passphrase facultative).
-- [ ] **Q6. Clé privée maîtresse et chain code.** HMAC-SHA512 de la seed avec la clé « Bitcoin seed ».
-- [ ] **Q7. Clé publique maîtresse.** Multiplication sur secp256k1, forme compressée.
+- [x] **Q6. Clé privée maîtresse et chain code.** HMAC-SHA512 de la seed avec la clé « Bitcoin seed ».
+- [x] **Q7. Clé publique maîtresse.** Multiplication sur secp256k1, forme compressée.
 - [ ] **Q8. Clé enfant.** Dérivation CKDpriv d'un enfant.
 - [ ] **Q9. Clé enfant à l'index N.** Index normal ou renforcé.
 - [ ] **Q10. Clé enfant à l'index N au niveau M.** Chemin complet, par exemple `m/44'/0'/0'/0/5`.

@@ -1,7 +1,7 @@
 //! Menu interactif, saisies et affichage.
 use std::io::{self, Write};
 
-use crate::{bip39, hex};
+use crate::{bip32, bip39, hex};
 
 /// Seed du wallet chargé pendant la session.
 type Seed = [u8; bip39::SEED_BYTES];
@@ -25,7 +25,10 @@ fn generer() -> io::Result<Option<Seed>> {
             return Ok(None);
         }
     };
-    println!("Entropie (entier 128 bits) : {}", u128::from_be_bytes(entropy));
+    println!(
+        "Entropie (entier 128 bits) : {}",
+        u128::from_be_bytes(entropy)
+    );
     afficher_representations(&entropy);
     let phrase = bip39::mnemonic(&entropy);
     println!("Phrase BIP39 : {phrase}");
@@ -52,7 +55,10 @@ fn afficher_representations(entropy: &[u8; bip39::ENTROPY_BYTES]) {
     println!("Octets : {entropy:?}");
     println!("Hexadécimal : {}", hex::encode(entropy));
     println!("Checksum (4 bits) : {:04b}", bip39::checksum(entropy));
-    println!("Binaire + checksum : {}", bip39::bits_with_checksum(entropy));
+    println!(
+        "Binaire + checksum : {}",
+        bip39::bits_with_checksum(entropy)
+    );
     println!("Groupes de 11 bits → indice :");
     for index in bip39::word_indices(entropy) {
         println!("  {index:011b} → {index}");
@@ -67,6 +73,25 @@ fn calculer_seed(phrase: &str) -> io::Result<Option<Seed>> {
     let seed = bip39::seed(phrase, &passphrase);
     println!("Seed BIP39 : {}", hex::encode(&seed));
     Ok(Some(seed))
+}
+
+fn afficher_cles_maitresses(seed: Option<&Seed>) {
+    let Some(seed) = seed else {
+        println!("Aucun wallet chargé : choisis d'abord 1 (générer) ou 2 (importer).");
+        return;
+    };
+    match bip32::master_key(seed) {
+        Ok(master) => afficher_cle(&master),
+        Err(erreur) => println!("Erreur : {erreur}."),
+    }
+}
+
+fn afficher_cle(cle: &bip32::ExtendedKey) {
+    println!("Clé privée : {}", hex::encode(&cle.private_key));
+    println!("Chain code : {}", hex::encode(&cle.chain_code));
+    println!("Clé publique : {}", hex::encode(&cle.public_key()));
+    println!("xprv : {}", cle.xprv());
+    println!("xpub : {}", cle.xpub());
 }
 
 pub fn run() -> io::Result<()> {
@@ -86,7 +111,7 @@ pub fn run() -> io::Result<()> {
         match choix.as_str() {
             "1" => seed = generer()?.or(seed),
             "2" => seed = importer()?.or(seed),
-            "3" => println!("Affichage des clés : à implémenter."),
+            "3" => afficher_cles_maitresses(seed.as_ref()),
             "4" | "5" => println!("Dérivation : à implémenter."),
             "0" => break,
             _ => println!("Choix invalide, réessaie."),

@@ -102,7 +102,10 @@ mod tests {
     #[test]
     fn checksum_et_indices_entropie_nulle() {
         assert_eq!(checksum(&[0; ENTROPY_BYTES]), 3);
-        assert_eq!(word_indices(&[0; ENTROPY_BYTES]), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3]);
+        assert_eq!(
+            word_indices(&[0; ENTROPY_BYTES]),
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3]
+        );
     }
 
     #[test]
@@ -128,7 +131,10 @@ mod tests {
                 [0x80; 16],
                 "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
             ),
-            ([0xff; 16], "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"),
+            (
+                [0xff; 16],
+                "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+            ),
             (
                 [
                     0x9e, 0x88, 0x5d, 0x95, 0x2a, 0xd3, 0x62, 0xca, 0xeb, 0x4e, 0xfe, 0x34, 0xa8,
