@@ -1,6 +1,7 @@
 //! Clés maîtresses, chain code et dérivation des clés enfants (BIP32).
 use hmac::{Hmac, KeyInit, Mac};
 use k256::SecretKey;
+use k256::elliptic_curve::sec1::ToSec1Point;
 use sha2::Sha512;
 
 use crate::base58;
@@ -11,6 +12,10 @@ pub const KEY_BYTES: usize = 32;
 const MASTER_HMAC_KEY: &[u8] = b"Bitcoin seed";
 /// Préfixe de version d'une clé privée étendue sur le mainnet (« xprv »).
 const XPRV_VERSION: [u8; 4] = [0x04, 0x88, 0xAD, 0xE4];
+/// Préfixe de version d'une clé publique étendue sur le mainnet (« xpub »).
+const XPUB_VERSION: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
+/// Taille d'une clé publique compressée : préfixe 02/03 + abscisse sur 32 octets.
+pub const PUBLIC_KEY_BYTES: usize = 33;
 
 /// Clé privée étendue : clé privée + chain code + position dans l'arbre.
 pub struct ExtendedKey {
@@ -66,6 +71,22 @@ impl ExtendedKey {
         key.extend_from_slice(&self.private_key);
         self.serialize(XPRV_VERSION, &key)
     }
+
+    /// Clé publique compressée (33 octets) : point K = k·G sur secp256k1.
+    pub fn public_key(&self) -> [u8; PUBLIC_KEY_BYTES] {
+        let secret =
+            SecretKey::from_slice(&self.private_key).expect("clé privée validée à la création");
+        let point = secret.public_key().to_sec1_point(true);
+        point
+            .as_bytes()
+            .try_into()
+            .expect("clé compressée sur 33 octets")
+    }
+
+    /// Clé publique étendue (xpub) : même chain code, clé publique à la place de la privée.
+    pub fn xpub(&self) -> String {
+        self.serialize(XPUB_VERSION, &self.public_key())
+    }
 }
 
 #[cfg(test)]
@@ -93,6 +114,19 @@ mod tests {
         assert_eq!(
             master.xprv(),
             "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi"
+        );
+    }
+
+    #[test]
+    fn cle_publique_maitresse_vecteur_1() {
+        let master = master_key(&SEED_VECTEUR_1).unwrap();
+        assert_eq!(
+            hex::encode(&master.public_key()),
+            "0339a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c2"
+        );
+        assert_eq!(
+            master.xpub(),
+            "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
         );
     }
 }

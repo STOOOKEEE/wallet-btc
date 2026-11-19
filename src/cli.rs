@@ -89,7 +89,9 @@ fn afficher_cles_maitresses(seed: Option<&Seed>) {
 fn afficher_cle(cle: &bip32::ExtendedKey) {
     println!("Clé privée : {}", hex::encode(&cle.private_key));
     println!("Chain code : {}", hex::encode(&cle.chain_code));
+    println!("Clé publique : {}", hex::encode(&cle.public_key()));
     println!("xprv : {}", cle.xprv());
+    println!("xpub : {}", cle.xpub());
 }
 
 pub fn run() -> io::Result<()> {
