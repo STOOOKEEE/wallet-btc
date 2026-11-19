@@ -1,6 +1,8 @@
 //! Menu interactif, saisies et affichage.
 use std::io::{self, Write};
 
+use crate::bip39;
+
 /// Affiche une question et lit une ligne. Renvoie `None` en fin de saisie (Ctrl+D).
 fn lire_ligne(question: &str) -> io::Result<Option<String>> {
     print!("{question}");
@@ -10,6 +12,17 @@ fn lire_ligne(question: &str) -> io::Result<Option<String>> {
         return Ok(None);
     }
     Ok(Some(ligne.trim().to_string()))
+}
+
+fn generer() {
+    let entropy = match bip39::generate_entropy() {
+        Ok(entropy) => entropy,
+        Err(erreur) => {
+            println!("Erreur de génération : {erreur}");
+            return;
+        }
+    };
+    println!("Entropie (entier 128 bits) : {}", u128::from_be_bytes(entropy));
 }
 
 pub fn run() -> io::Result<()> {
@@ -26,7 +39,7 @@ pub fn run() -> io::Result<()> {
             break;
         };
         match choix.as_str() {
-            "1" => println!("Génération : à implémenter."),
+            "1" => generer(),
             "2" => println!("Import : à implémenter."),
             "3" => println!("Affichage des clés : à implémenter."),
             "4" | "5" => println!("Dérivation : à implémenter."),
