@@ -40,6 +40,17 @@ pub fn word_indices(entropy: &[u8; ENTROPY_BYTES]) -> [usize; WORD_COUNT] {
     })
 }
 
+/// Liste officielle anglaise BIP39 (2048 mots), embarquée à la compilation.
+fn wordlist() -> Vec<&'static str> {
+    include_str!("english.txt").lines().collect()
+}
+
+/// Phrase mnémonique : chaque indice de 11 bits est remplacé par le mot correspondant.
+pub fn mnemonic(entropy: &[u8; ENTROPY_BYTES]) -> String {
+    let words = wordlist();
+    word_indices(entropy).map(|index| words[index]).join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,5 +59,41 @@ mod tests {
     fn checksum_et_indices_entropie_nulle() {
         assert_eq!(checksum(&[0; ENTROPY_BYTES]), 3);
         assert_eq!(word_indices(&[0; ENTROPY_BYTES]), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3]);
+    }
+
+    #[test]
+    fn liste_officielle_complete_et_triee() {
+        let words = wordlist();
+        assert_eq!(words.len(), 2048);
+        assert!(words.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn vecteurs_de_reference_bip39() {
+        // Source : trezor/python-mnemonic, vectors.json (anglais).
+        for (entropy, expected) in [
+            (
+                [0; 16],
+                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            ),
+            (
+                [0x7f; 16],
+                "legal winner thank year wave sausage worth useful legal winner thank yellow",
+            ),
+            (
+                [0x80; 16],
+                "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+            ),
+            ([0xff; 16], "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"),
+            (
+                [
+                    0x9e, 0x88, 0x5d, 0x95, 0x2a, 0xd3, 0x62, 0xca, 0xeb, 0x4e, 0xfe, 0x34, 0xa8,
+                    0xe9, 0x1b, 0xd2,
+                ],
+                "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+            ),
+        ] {
+            assert_eq!(mnemonic(&entropy), expected);
+        }
     }
 }

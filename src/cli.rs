@@ -29,6 +29,7 @@ fn generer() {
     };
     println!("Entropie (entier 128 bits) : {}", u128::from_be_bytes(entropy));
     afficher_representations(&entropy);
+    println!("Phrase BIP39 : {}", bip39::mnemonic(&entropy));
 }
 
 fn afficher_representations(entropy: &[u8; bip39::ENTROPY_BYTES]) {
