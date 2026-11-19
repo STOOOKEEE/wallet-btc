@@ -11,5 +11,5 @@ Une branche fusionnée par merge commit par partie du TD, un commit par question
 - [x] **Q7. Clé publique maîtresse.** Multiplication sur secp256k1, forme compressée.
 - [x] **Q8. Clé enfant.** Dérivation CKDpriv d'un enfant.
 - [x] **Q9. Clé enfant à l'index N.** Index normal ou renforcé.
-- [ ] **Q10. Clé enfant à l'index N au niveau M.** Chemin complet, par exemple `m/44'/0'/0'/0/5`.
+- [x] **Q10. Clé enfant à l'index N au niveau M.** Chemin complet, par exemple `m/44'/0'/0'/0/5`.
 - [ ] **Rapport.** Vérification avec Ian Coleman, instructions et rapport dans le README.

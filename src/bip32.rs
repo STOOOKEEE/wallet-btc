@@ -56,6 +56,20 @@ pub fn master_key(seed: &[u8]) -> Result<ExtendedKey, String> {
     })
 }
 
+/// Dérive la clé d'un chemin complet, par ex. `m/44'/0'/0'/0/5` :
+/// le niveau M est le nombre d'index, le dernier index est N.
+pub fn derive_path(master: ExtendedKey, path: &str) -> Result<ExtendedKey, String> {
+    let mut parts = path.split('/');
+    if parts.next() != Some("m") {
+        return Err("le chemin doit commencer par « m », par ex. m/44'/0'/0'/0/5".to_string());
+    }
+    let mut key = master;
+    for part in parts {
+        key = key.derive_child(parse_index(part)?)?;
+    }
+    Ok(key)
+}
+
 /// Lit un index : `5` (normal) ou `5'` / `5h` (renforcé, soit 5 + 2^31).
 pub fn parse_index(text: &str) -> Result<u32, String> {
     let (number, hardened) = match text.strip_suffix(['\'', 'h']) {
@@ -231,5 +245,28 @@ mod tests {
         assert!(parse_index("abc").is_err());
         assert!(parse_index("2147483648").is_err());
         assert_eq!(format_index(5 + HARDENED_OFFSET), "5'");
+    }
+
+    #[test]
+    fn chemin_complet_vecteur_1() {
+        let master = master_key(&SEED_VECTEUR_1).unwrap();
+        let cle = derive_path(master, "m/0'/1/2'/2/1000000000").unwrap();
+        assert_eq!(cle.depth, 5);
+        assert_eq!(
+            cle.xprv(),
+            "xprvA41z7zogVVwxVSgdKUHDy1SKmdb533PjDz7J6N6mV6uS3ze1ai8FHa8kmHScGpWmj4WggLyQjgPie1rFSruoUihUZREPSL39UNdE3BBDu76"
+        );
+        assert_eq!(
+            cle.xpub(),
+            "xpub6H1LXWLaKsWFhvm6RVpEL9P4KfRZSW7abD2ttkWP3SSQvnyA8FSVqNTEcYFgJS2UaFcxupHiYkro49S8yGasTvXEYBVPamhGW6cFJodrTHy"
+        );
+    }
+
+    #[test]
+    fn chemins_invalides() {
+        for chemin in ["0/1", "m/", "m/1/x", "m//1"] {
+            let master = master_key(&SEED_VECTEUR_1).unwrap();
+            assert!(derive_path(master, chemin).is_err(), "{chemin}");
+        }
     }
 }

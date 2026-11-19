@@ -118,6 +118,19 @@ fn deriver_enfant(seed: Option<&Seed>) -> io::Result<()> {
     Ok(())
 }
 
+fn deriver_chemin(seed: Option<&Seed>) -> io::Result<()> {
+    let Some(master) = cle_maitresse(seed) else {
+        return Ok(());
+    };
+    let Some(chemin) = lire_ligne("Chemin (ex. m/44'/0'/0'/0/5 : niveau M = 5, index N = 5) : ")?
+    else {
+        return Ok(());
+    };
+    println!("Clé enfant {chemin} :");
+    afficher_derivation(bip32::derive_path(master, &chemin));
+    Ok(())
+}
+
 fn afficher_derivation(resultat: Result<bip32::ExtendedKey, String>) {
     match resultat {
         Ok(cle) => afficher_cle(&cle),
@@ -157,7 +170,7 @@ pub fn run() -> io::Result<()> {
             "2" => seed = importer()?.or(seed),
             "3" => afficher_cles_maitresses(seed.as_ref()),
             "4" => deriver_enfant(seed.as_ref())?,
-            "5" => println!("Dérivation par chemin : à implémenter."),
+            "5" => deriver_chemin(seed.as_ref())?,
             "0" => break,
             _ => println!("Choix invalide, réessaie."),
         }
