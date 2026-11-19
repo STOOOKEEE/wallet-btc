@@ -1,7 +1,7 @@
 //! Menu interactif, saisies et affichage.
 use std::io::{self, Write};
 
-use crate::{bip39, hex};
+use crate::{bip32, bip39, hex};
 
 /// Seed du wallet chargé pendant la session.
 type Seed = [u8; bip39::SEED_BYTES];
@@ -75,6 +75,23 @@ fn calculer_seed(phrase: &str) -> io::Result<Option<Seed>> {
     Ok(Some(seed))
 }
 
+fn afficher_cles_maitresses(seed: Option<&Seed>) {
+    let Some(seed) = seed else {
+        println!("Aucun wallet chargé : choisis d'abord 1 (générer) ou 2 (importer).");
+        return;
+    };
+    match bip32::master_key(seed) {
+        Ok(master) => afficher_cle(&master),
+        Err(erreur) => println!("Erreur : {erreur}."),
+    }
+}
+
+fn afficher_cle(cle: &bip32::ExtendedKey) {
+    println!("Clé privée : {}", hex::encode(&cle.private_key));
+    println!("Chain code : {}", hex::encode(&cle.chain_code));
+    println!("xprv : {}", cle.xprv());
+}
+
 pub fn run() -> io::Result<()> {
     let mut seed: Option<Seed> = None;
     loop {
@@ -92,7 +109,7 @@ pub fn run() -> io::Result<()> {
         match choix.as_str() {
             "1" => seed = generer()?.or(seed),
             "2" => seed = importer()?.or(seed),
-            "3" => println!("Affichage des clés : à implémenter."),
+            "3" => afficher_cles_maitresses(seed.as_ref()),
             "4" | "5" => println!("Dérivation : à implémenter."),
             "0" => break,
             _ => println!("Choix invalide, réessaie."),
