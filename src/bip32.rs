@@ -1,8 +1,10 @@
 //! Clés maîtresses, chain code et dérivation des clés enfants (BIP32).
 use hmac::{Hmac, KeyInit, Mac};
-use k256::SecretKey;
+use k256::elliptic_curve::PrimeField;
 use k256::elliptic_curve::sec1::ToSec1Point;
-use sha2::Sha512;
+use k256::{Scalar, SecretKey};
+use ripemd::Ripemd160;
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::base58;
 
@@ -16,6 +18,8 @@ const XPRV_VERSION: [u8; 4] = [0x04, 0x88, 0xAD, 0xE4];
 const XPUB_VERSION: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
 /// Taille d'une clé publique compressée : préfixe 02/03 + abscisse sur 32 octets.
 pub const PUBLIC_KEY_BYTES: usize = 33;
+/// Les index à partir de 2^31 désignent des enfants renforcés (notés `i'`).
+pub const HARDENED_OFFSET: u32 = 1 << 31;
 
 /// Clé privée étendue : clé privée + chain code + position dans l'arbre.
 pub struct ExtendedKey {
@@ -87,6 +91,46 @@ impl ExtendedKey {
     pub fn xpub(&self) -> String {
         self.serialize(XPUB_VERSION, &self.public_key())
     }
+
+    /// Empreinte de la clé : 4 premiers octets de RIPEMD160(SHA256(clé publique)).
+    fn fingerprint(&self) -> [u8; 4] {
+        let hash = Ripemd160::digest(Sha256::digest(self.public_key()));
+        hash[..4].try_into().expect("4 octets")
+    }
+
+    /// CKDpriv : dérive la clé enfant d'index `index` (renforcée si index ≥ 2^31).
+    pub fn derive_child(&self, index: u32) -> Result<ExtendedKey, String> {
+        // Enfant renforcé : 0x00 || clé privée ; enfant normal : clé publique.
+        let mut data = Vec::new();
+        if index >= HARDENED_OFFSET {
+            data.push(0);
+            data.extend_from_slice(&self.private_key);
+        } else {
+            data.extend_from_slice(&self.public_key());
+        }
+        data.extend_from_slice(&index.to_be_bytes());
+        let (il, chain_code) = hmac_sha512(&self.chain_code, &data);
+
+        // Clé enfant = (IL + clé parent) mod n. Invalide si IL ≥ n ou si le résultat est nul.
+        let il: Option<Scalar> = Scalar::from_repr(il.into()).into();
+        let il = il.ok_or("index invalide (IL ≥ n), essayer l'index suivant")?;
+        let parent =
+            SecretKey::from_slice(&self.private_key).expect("clé privée validée à la création");
+        let child = il + *parent.to_nonzero_scalar();
+        SecretKey::from_bytes(&child.to_bytes())
+            .map_err(|_| "index invalide (clé nulle), essayer l'index suivant")?;
+
+        Ok(ExtendedKey {
+            private_key: child.to_bytes().into(),
+            chain_code,
+            depth: self
+                .depth
+                .checked_add(1)
+                .ok_or("profondeur maximale (255) atteinte")?,
+            parent_fingerprint: self.fingerprint(),
+            child_number: index,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -127,6 +171,24 @@ mod tests {
         assert_eq!(
             master.xpub(),
             "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
+        );
+    }
+
+    #[test]
+    fn cles_enfants_vecteur_1() {
+        // m/0' (renforcé) puis m/0'/1 (normal).
+        let enfant = master_key(&SEED_VECTEUR_1)
+            .unwrap()
+            .derive_child(HARDENED_OFFSET)
+            .unwrap();
+        assert_eq!(
+            enfant.xprv(),
+            "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7"
+        );
+        let petit_enfant = enfant.derive_child(1).unwrap();
+        assert_eq!(
+            petit_enfant.xpub(),
+            "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq527Hqck2AxYysAA7xmALppuCkwQ"
         );
     }
 }

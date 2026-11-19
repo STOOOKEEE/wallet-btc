@@ -75,14 +75,39 @@ fn calculer_seed(phrase: &str) -> io::Result<Option<Seed>> {
     Ok(Some(seed))
 }
 
-fn afficher_cles_maitresses(seed: Option<&Seed>) {
+/// Clé maîtresse du wallet chargé ; affiche la raison si elle est indisponible.
+fn cle_maitresse(seed: Option<&Seed>) -> Option<bip32::ExtendedKey> {
     let Some(seed) = seed else {
         println!("Aucun wallet chargé : choisis d'abord 1 (générer) ou 2 (importer).");
-        return;
+        return None;
     };
     match bip32::master_key(seed) {
-        Ok(master) => afficher_cle(&master),
-        Err(erreur) => println!("Erreur : {erreur}."),
+        Ok(master) => Some(master),
+        Err(erreur) => {
+            println!("Erreur : {erreur}.");
+            None
+        }
+    }
+}
+
+fn afficher_cles_maitresses(seed: Option<&Seed>) {
+    if let Some(master) = cle_maitresse(seed) {
+        afficher_cle(&master);
+    }
+}
+
+fn deriver_enfant(seed: Option<&Seed>) {
+    let Some(master) = cle_maitresse(seed) else {
+        return;
+    };
+    println!("Clé enfant m/0 :");
+    afficher_derivation(master.derive_child(0));
+}
+
+fn afficher_derivation(resultat: Result<bip32::ExtendedKey, String>) {
+    match resultat {
+        Ok(cle) => afficher_cle(&cle),
+        Err(erreur) => println!("Dérivation impossible : {erreur}."),
     }
 }
 
@@ -112,7 +137,8 @@ pub fn run() -> io::Result<()> {
             "1" => seed = generer()?.or(seed),
             "2" => seed = importer()?.or(seed),
             "3" => afficher_cles_maitresses(seed.as_ref()),
-            "4" | "5" => println!("Dérivation : à implémenter."),
+            "4" => deriver_enfant(seed.as_ref()),
+            "5" => println!("Dérivation par chemin : à implémenter."),
             "0" => break,
             _ => println!("Choix invalide, réessaie."),
         }
