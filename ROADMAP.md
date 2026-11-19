@@ -2,7 +2,7 @@
 
 Une branche fusionnée par merge commit par partie du TD, un commit par question.
 
-- [ ] **Q1. Menu interactif.** Générer, importer, afficher les clés, dériver, quitter. Entrées invalides et fin de saisie gérées.
+- [x] **Q1. Menu interactif.** Générer, importer, afficher les clés, dériver, quitter. Entrées invalides et fin de saisie gérées.
 - [ ] **Q2. Entropie.** 128 bits tirés de l'aléa cryptographique du système.
 - [ ] **Q3. Représentations.** Octets, hexadécimal, binaire, checksum SHA-256 et groupes de 11 bits.
 - [ ] **Q4. Phrase BIP39.** Liste officielle anglaise, conversion des indices en mots.
