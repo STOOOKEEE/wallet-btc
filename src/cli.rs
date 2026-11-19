@@ -1,7 +1,10 @@
 //! Menu interactif, saisies et affichage.
 use std::io::{self, Write};
 
-use crate::bip39;
+use crate::{bip39, hex};
+
+/// Seed du wallet chargé pendant la session.
+type Seed = [u8; bip39::SEED_BYTES];
 
 /// Affiche une question et lit une ligne. Renvoie `None` en fin de saisie (Ctrl+D).
 fn lire_ligne(question: &str) -> io::Result<Option<String>> {
@@ -14,27 +17,40 @@ fn lire_ligne(question: &str) -> io::Result<Option<String>> {
     Ok(Some(ligne.trim().to_string()))
 }
 
-/// Représentation hexadécimale d'une suite d'octets.
-fn hex(octets: &[u8]) -> String {
-    octets.iter().map(|octet| format!("{octet:02x}")).collect()
-}
-
-fn generer() {
+fn generer() -> io::Result<Option<Seed>> {
     let entropy = match bip39::generate_entropy() {
         Ok(entropy) => entropy,
         Err(erreur) => {
             println!("Erreur de génération : {erreur}");
-            return;
+            return Ok(None);
         }
     };
     println!("Entropie (entier 128 bits) : {}", u128::from_be_bytes(entropy));
     afficher_representations(&entropy);
-    println!("Phrase BIP39 : {}", bip39::mnemonic(&entropy));
+    let phrase = bip39::mnemonic(&entropy);
+    println!("Phrase BIP39 : {phrase}");
+    calculer_seed(&phrase)
+}
+
+fn importer() -> io::Result<Option<Seed>> {
+    let Some(saisie) = lire_ligne("Phrase de 12 mots : ")? else {
+        return Ok(None);
+    };
+    let entropy = match bip39::entropy_from_mnemonic(&saisie.to_lowercase()) {
+        Ok(entropy) => entropy,
+        Err(erreur) => {
+            println!("Phrase refusée : {erreur}.");
+            return Ok(None);
+        }
+    };
+    println!("Phrase valide.");
+    afficher_representations(&entropy);
+    calculer_seed(&bip39::mnemonic(&entropy))
 }
 
 fn afficher_representations(entropy: &[u8; bip39::ENTROPY_BYTES]) {
     println!("Octets : {entropy:?}");
-    println!("Hexadécimal : {}", hex(entropy));
+    println!("Hexadécimal : {}", hex::encode(entropy));
     println!("Checksum (4 bits) : {:04b}", bip39::checksum(entropy));
     println!("Binaire + checksum : {}", bip39::bits_with_checksum(entropy));
     println!("Groupes de 11 bits → indice :");
@@ -43,7 +59,18 @@ fn afficher_representations(entropy: &[u8; bip39::ENTROPY_BYTES]) {
     }
 }
 
+/// Demande la passphrase facultative et calcule la seed de 512 bits.
+fn calculer_seed(phrase: &str) -> io::Result<Option<Seed>> {
+    let Some(passphrase) = lire_ligne("Passphrase (Entrée pour aucune) : ")? else {
+        return Ok(None);
+    };
+    let seed = bip39::seed(phrase, &passphrase);
+    println!("Seed BIP39 : {}", hex::encode(&seed));
+    Ok(Some(seed))
+}
+
 pub fn run() -> io::Result<()> {
+    let mut seed: Option<Seed> = None;
     loop {
         println!();
         println!("=== Wallet BTC ===");
@@ -57,8 +84,8 @@ pub fn run() -> io::Result<()> {
             break;
         };
         match choix.as_str() {
-            "1" => generer(),
-            "2" => println!("Import : à implémenter."),
+            "1" => seed = generer()?.or(seed),
+            "2" => seed = importer()?.or(seed),
             "3" => println!("Affichage des clés : à implémenter."),
             "4" | "5" => println!("Dérivation : à implémenter."),
             "0" => break,
