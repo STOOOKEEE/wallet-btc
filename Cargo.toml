@@ -6,4 +6,6 @@ publish = false
 
 [dependencies]
 getrandom = "0.4.3"
+pbkdf2 = "0.13.0"
 sha2 = "0.11.0"
+unicode-normalization = "0.1.26"
