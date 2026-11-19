@@ -96,12 +96,26 @@ fn afficher_cles_maitresses(seed: Option<&Seed>) {
     }
 }
 
-fn deriver_enfant(seed: Option<&Seed>) {
+fn deriver_enfant(seed: Option<&Seed>) -> io::Result<()> {
     let Some(master) = cle_maitresse(seed) else {
-        return;
+        return Ok(());
     };
-    println!("Clé enfant m/0 :");
-    afficher_derivation(master.derive_child(0));
+    let Some(saisie) = lire_ligne("Index N (ex. 5, ou 5' pour renforcé ; Entrée = 0) : ")? else {
+        return Ok(());
+    };
+    let saisie = if saisie.is_empty() {
+        "0"
+    } else {
+        saisie.as_str()
+    };
+    match bip32::parse_index(saisie) {
+        Ok(index) => {
+            println!("Clé enfant m/{} :", bip32::format_index(index));
+            afficher_derivation(master.derive_child(index));
+        }
+        Err(erreur) => println!("Saisie refusée : {erreur}."),
+    }
+    Ok(())
 }
 
 fn afficher_derivation(resultat: Result<bip32::ExtendedKey, String>) {
@@ -112,6 +126,11 @@ fn afficher_derivation(resultat: Result<bip32::ExtendedKey, String>) {
 }
 
 fn afficher_cle(cle: &bip32::ExtendedKey) {
+    println!(
+        "Profondeur : {}, index : {}",
+        cle.depth,
+        bip32::format_index(cle.child_number)
+    );
     println!("Clé privée : {}", hex::encode(&cle.private_key));
     println!("Chain code : {}", hex::encode(&cle.chain_code));
     println!("Clé publique : {}", hex::encode(&cle.public_key()));
@@ -137,7 +156,7 @@ pub fn run() -> io::Result<()> {
             "1" => seed = generer()?.or(seed),
             "2" => seed = importer()?.or(seed),
             "3" => afficher_cles_maitresses(seed.as_ref()),
-            "4" => deriver_enfant(seed.as_ref()),
+            "4" => deriver_enfant(seed.as_ref())?,
             "5" => println!("Dérivation par chemin : à implémenter."),
             "0" => break,
             _ => println!("Choix invalide, réessaie."),

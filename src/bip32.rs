@@ -56,6 +56,36 @@ pub fn master_key(seed: &[u8]) -> Result<ExtendedKey, String> {
     })
 }
 
+/// Lit un index : `5` (normal) ou `5'` / `5h` (renforcé, soit 5 + 2^31).
+pub fn parse_index(text: &str) -> Result<u32, String> {
+    let (number, hardened) = match text.strip_suffix(['\'', 'h']) {
+        Some(number) => (number, true),
+        None => (text, false),
+    };
+    let index: u32 = number
+        .parse()
+        .map_err(|_| format!("index invalide : « {text} »"))?;
+    if index >= HARDENED_OFFSET {
+        return Err(format!(
+            "index trop grand : « {text} » (maximum 2147483647)"
+        ));
+    }
+    Ok(if hardened {
+        index + HARDENED_OFFSET
+    } else {
+        index
+    })
+}
+
+/// Écriture d'un index dans un chemin : `5` ou `5'` pour un index renforcé.
+pub fn format_index(index: u32) -> String {
+    if index >= HARDENED_OFFSET {
+        format!("{}'", index - HARDENED_OFFSET)
+    } else {
+        index.to_string()
+    }
+}
+
 impl ExtendedKey {
     /// Sérialisation BIP32 : version, profondeur, empreinte du parent, index, chain code, clé.
     fn serialize(&self, version: [u8; 4], key: &[u8]) -> String {
@@ -190,5 +220,16 @@ mod tests {
             petit_enfant.xpub(),
             "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq527Hqck2AxYysAA7xmALppuCkwQ"
         );
+    }
+
+    #[test]
+    fn lecture_des_index() {
+        assert_eq!(parse_index("5"), Ok(5));
+        assert_eq!(parse_index("5'"), Ok(5 + HARDENED_OFFSET));
+        assert_eq!(parse_index("5h"), Ok(5 + HARDENED_OFFSET));
+        assert!(parse_index("-1").is_err());
+        assert!(parse_index("abc").is_err());
+        assert!(parse_index("2147483648").is_err());
+        assert_eq!(format_index(5 + HARDENED_OFFSET), "5'");
     }
 }
