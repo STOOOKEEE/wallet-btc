@@ -75,18 +75,75 @@ fn calculer_seed(phrase: &str) -> io::Result<Option<Seed>> {
     Ok(Some(seed))
 }
 
-fn afficher_cles_maitresses(seed: Option<&Seed>) {
+/// Clé maîtresse du wallet chargé ; affiche la raison si elle est indisponible.
+fn cle_maitresse(seed: Option<&Seed>) -> Option<bip32::ExtendedKey> {
     let Some(seed) = seed else {
         println!("Aucun wallet chargé : choisis d'abord 1 (générer) ou 2 (importer).");
-        return;
+        return None;
     };
     match bip32::master_key(seed) {
-        Ok(master) => afficher_cle(&master),
-        Err(erreur) => println!("Erreur : {erreur}."),
+        Ok(master) => Some(master),
+        Err(erreur) => {
+            println!("Erreur : {erreur}.");
+            None
+        }
+    }
+}
+
+fn afficher_cles_maitresses(seed: Option<&Seed>) {
+    if let Some(master) = cle_maitresse(seed) {
+        afficher_cle(&master);
+    }
+}
+
+fn deriver_enfant(seed: Option<&Seed>) -> io::Result<()> {
+    let Some(master) = cle_maitresse(seed) else {
+        return Ok(());
+    };
+    let Some(saisie) = lire_ligne("Index N (ex. 5, ou 5' pour renforcé ; Entrée = 0) : ")? else {
+        return Ok(());
+    };
+    let saisie = if saisie.is_empty() {
+        "0"
+    } else {
+        saisie.as_str()
+    };
+    match bip32::parse_index(saisie) {
+        Ok(index) => {
+            println!("Clé enfant m/{} :", bip32::format_index(index));
+            afficher_derivation(master.derive_child(index));
+        }
+        Err(erreur) => println!("Saisie refusée : {erreur}."),
+    }
+    Ok(())
+}
+
+fn deriver_chemin(seed: Option<&Seed>) -> io::Result<()> {
+    let Some(master) = cle_maitresse(seed) else {
+        return Ok(());
+    };
+    let Some(chemin) = lire_ligne("Chemin (ex. m/44'/0'/0'/0/5 : niveau M = 5, index N = 5) : ")?
+    else {
+        return Ok(());
+    };
+    println!("Clé enfant {chemin} :");
+    afficher_derivation(bip32::derive_path(master, &chemin));
+    Ok(())
+}
+
+fn afficher_derivation(resultat: Result<bip32::ExtendedKey, String>) {
+    match resultat {
+        Ok(cle) => afficher_cle(&cle),
+        Err(erreur) => println!("Dérivation impossible : {erreur}."),
     }
 }
 
 fn afficher_cle(cle: &bip32::ExtendedKey) {
+    println!(
+        "Profondeur : {}, index : {}",
+        cle.depth,
+        bip32::format_index(cle.child_number)
+    );
     println!("Clé privée : {}", hex::encode(&cle.private_key));
     println!("Chain code : {}", hex::encode(&cle.chain_code));
     println!("Clé publique : {}", hex::encode(&cle.public_key()));
@@ -112,7 +169,8 @@ pub fn run() -> io::Result<()> {
             "1" => seed = generer()?.or(seed),
             "2" => seed = importer()?.or(seed),
             "3" => afficher_cles_maitresses(seed.as_ref()),
-            "4" | "5" => println!("Dérivation : à implémenter."),
+            "4" => deriver_enfant(seed.as_ref())?,
+            "5" => deriver_chemin(seed.as_ref())?,
             "0" => break,
             _ => println!("Choix invalide, réessaie."),
         }

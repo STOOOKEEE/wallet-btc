@@ -1,8 +1,10 @@
 //! Clés maîtresses, chain code et dérivation des clés enfants (BIP32).
 use hmac::{Hmac, KeyInit, Mac};
-use k256::SecretKey;
+use k256::elliptic_curve::PrimeField;
 use k256::elliptic_curve::sec1::ToSec1Point;
-use sha2::Sha512;
+use k256::{Scalar, SecretKey};
+use ripemd::Ripemd160;
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::base58;
 
@@ -16,6 +18,8 @@ const XPRV_VERSION: [u8; 4] = [0x04, 0x88, 0xAD, 0xE4];
 const XPUB_VERSION: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
 /// Taille d'une clé publique compressée : préfixe 02/03 + abscisse sur 32 octets.
 pub const PUBLIC_KEY_BYTES: usize = 33;
+/// Les index à partir de 2^31 désignent des enfants renforcés (notés `i'`).
+pub const HARDENED_OFFSET: u32 = 1 << 31;
 
 /// Clé privée étendue : clé privée + chain code + position dans l'arbre.
 pub struct ExtendedKey {
@@ -52,6 +56,50 @@ pub fn master_key(seed: &[u8]) -> Result<ExtendedKey, String> {
     })
 }
 
+/// Dérive la clé d'un chemin complet, par ex. `m/44'/0'/0'/0/5` :
+/// le niveau M est le nombre d'index, le dernier index est N.
+pub fn derive_path(master: ExtendedKey, path: &str) -> Result<ExtendedKey, String> {
+    let mut parts = path.split('/');
+    if parts.next() != Some("m") {
+        return Err("le chemin doit commencer par « m », par ex. m/44'/0'/0'/0/5".to_string());
+    }
+    let mut key = master;
+    for part in parts {
+        key = key.derive_child(parse_index(part)?)?;
+    }
+    Ok(key)
+}
+
+/// Lit un index : `5` (normal) ou `5'` / `5h` (renforcé, soit 5 + 2^31).
+pub fn parse_index(text: &str) -> Result<u32, String> {
+    let (number, hardened) = match text.strip_suffix(['\'', 'h']) {
+        Some(number) => (number, true),
+        None => (text, false),
+    };
+    let index: u32 = number
+        .parse()
+        .map_err(|_| format!("index invalide : « {text} »"))?;
+    if index >= HARDENED_OFFSET {
+        return Err(format!(
+            "index trop grand : « {text} » (maximum 2147483647)"
+        ));
+    }
+    Ok(if hardened {
+        index + HARDENED_OFFSET
+    } else {
+        index
+    })
+}
+
+/// Écriture d'un index dans un chemin : `5` ou `5'` pour un index renforcé.
+pub fn format_index(index: u32) -> String {
+    if index >= HARDENED_OFFSET {
+        format!("{}'", index - HARDENED_OFFSET)
+    } else {
+        index.to_string()
+    }
+}
+
 impl ExtendedKey {
     /// Sérialisation BIP32 : version, profondeur, empreinte du parent, index, chain code, clé.
     fn serialize(&self, version: [u8; 4], key: &[u8]) -> String {
@@ -86,6 +134,46 @@ impl ExtendedKey {
     /// Clé publique étendue (xpub) : même chain code, clé publique à la place de la privée.
     pub fn xpub(&self) -> String {
         self.serialize(XPUB_VERSION, &self.public_key())
+    }
+
+    /// Empreinte de la clé : 4 premiers octets de RIPEMD160(SHA256(clé publique)).
+    fn fingerprint(&self) -> [u8; 4] {
+        let hash = Ripemd160::digest(Sha256::digest(self.public_key()));
+        hash[..4].try_into().expect("4 octets")
+    }
+
+    /// CKDpriv : dérive la clé enfant d'index `index` (renforcée si index ≥ 2^31).
+    pub fn derive_child(&self, index: u32) -> Result<ExtendedKey, String> {
+        // Enfant renforcé : 0x00 || clé privée ; enfant normal : clé publique.
+        let mut data = Vec::new();
+        if index >= HARDENED_OFFSET {
+            data.push(0);
+            data.extend_from_slice(&self.private_key);
+        } else {
+            data.extend_from_slice(&self.public_key());
+        }
+        data.extend_from_slice(&index.to_be_bytes());
+        let (il, chain_code) = hmac_sha512(&self.chain_code, &data);
+
+        // Clé enfant = (IL + clé parent) mod n. Invalide si IL ≥ n ou si le résultat est nul.
+        let il: Option<Scalar> = Scalar::from_repr(il.into()).into();
+        let il = il.ok_or("index invalide (IL ≥ n), essayer l'index suivant")?;
+        let parent =
+            SecretKey::from_slice(&self.private_key).expect("clé privée validée à la création");
+        let child = il + *parent.to_nonzero_scalar();
+        SecretKey::from_bytes(&child.to_bytes())
+            .map_err(|_| "index invalide (clé nulle), essayer l'index suivant")?;
+
+        Ok(ExtendedKey {
+            private_key: child.to_bytes().into(),
+            chain_code,
+            depth: self
+                .depth
+                .checked_add(1)
+                .ok_or("profondeur maximale (255) atteinte")?,
+            parent_fingerprint: self.fingerprint(),
+            child_number: index,
+        })
     }
 }
 
@@ -128,5 +216,57 @@ mod tests {
             master.xpub(),
             "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
         );
+    }
+
+    #[test]
+    fn cles_enfants_vecteur_1() {
+        // m/0' (renforcé) puis m/0'/1 (normal).
+        let enfant = master_key(&SEED_VECTEUR_1)
+            .unwrap()
+            .derive_child(HARDENED_OFFSET)
+            .unwrap();
+        assert_eq!(
+            enfant.xprv(),
+            "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7"
+        );
+        let petit_enfant = enfant.derive_child(1).unwrap();
+        assert_eq!(
+            petit_enfant.xpub(),
+            "xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq527Hqck2AxYysAA7xmALppuCkwQ"
+        );
+    }
+
+    #[test]
+    fn lecture_des_index() {
+        assert_eq!(parse_index("5"), Ok(5));
+        assert_eq!(parse_index("5'"), Ok(5 + HARDENED_OFFSET));
+        assert_eq!(parse_index("5h"), Ok(5 + HARDENED_OFFSET));
+        assert!(parse_index("-1").is_err());
+        assert!(parse_index("abc").is_err());
+        assert!(parse_index("2147483648").is_err());
+        assert_eq!(format_index(5 + HARDENED_OFFSET), "5'");
+    }
+
+    #[test]
+    fn chemin_complet_vecteur_1() {
+        let master = master_key(&SEED_VECTEUR_1).unwrap();
+        let cle = derive_path(master, "m/0'/1/2'/2/1000000000").unwrap();
+        assert_eq!(cle.depth, 5);
+        assert_eq!(
+            cle.xprv(),
+            "xprvA41z7zogVVwxVSgdKUHDy1SKmdb533PjDz7J6N6mV6uS3ze1ai8FHa8kmHScGpWmj4WggLyQjgPie1rFSruoUihUZREPSL39UNdE3BBDu76"
+        );
+        assert_eq!(
+            cle.xpub(),
+            "xpub6H1LXWLaKsWFhvm6RVpEL9P4KfRZSW7abD2ttkWP3SSQvnyA8FSVqNTEcYFgJS2UaFcxupHiYkro49S8yGasTvXEYBVPamhGW6cFJodrTHy"
+        );
+    }
+
+    #[test]
+    fn chemins_invalides() {
+        for chemin in ["0/1", "m/", "m/1/x", "m//1"] {
+            let master = master_key(&SEED_VECTEUR_1).unwrap();
+            assert!(derive_path(master, chemin).is_err(), "{chemin}");
+        }
     }
 }
